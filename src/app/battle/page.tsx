@@ -30,17 +30,19 @@ const TYPE_EFFECTIVENESS: Record<string, { weakTo: string[]; resistantTo: string
   fairy: { weakTo: ['poison', 'steel'], resistantTo: ['fighting', 'bug', 'dark'], immuneTo: ['dragon'] },
 };
 
-// Generation mapping for movesets
-const generationMap: Record<string, string[]> = {
-  "Gen 1": ["red-blue", "yellow"],
-  "Gen 2": ["gold-silver", "crystal"],
-  "Gen 3": ["ruby-sapphire", "emerald", "firered-leafgreen"],
-  "Gen 4": ["diamond-pearl", "platinum", "heartgold-soulsilver"],
-  "Gen 5": ["black-white", "black-2-white-2"],
-  "Gen 6": ["x-y", "omega-ruby-alpha-sapphire"],
-  "Gen 7": ["sun-moon", "ultra-sun-ultra-moon"],
-  "Gen 8": ["sword-shield"],
-  "Gen 9": ["scarlet-violet"],
+// Generation mapping - using the definitive/latest version of each gen for accuracy
+const generationMap: Record<string, string> = {
+  "Gen 1 (Yellow)": "yellow",
+  "Gen 2 (Crystal)": "crystal",
+  "Gen 3 (Emerald)": "emerald",
+  "Gen 4 (Platinum)": "platinum",
+  "Gen 4 (HGSS)": "heartgold-soulsilver",
+  "Gen 5 (B2W2)": "black-2-white-2",
+  "Gen 6 (XY)": "x-y",
+  "Gen 6 (ORAS)": "omega-ruby-alpha-sapphire",
+  "Gen 7 (USUM)": "ultra-sun-ultra-moon",
+  "Gen 8 (SwSh)": "sword-shield",
+  "Gen 9 (SV)": "scarlet-violet",
 };
 
 export default function BattlePage() {
@@ -56,7 +58,7 @@ export default function BattlePage() {
   const [opponentData, setOpponentData] = useState<PokeApiPokemon | null>(null);
   const [opponentLevel, setOpponentLevel] = useState<number>(50);
   const [loadingOpponent, setLoadingOpponent] = useState(false);
-  const [selectedGeneration, setSelectedGeneration] = useState<string>("Gen 9");
+  const [selectedGeneration, setSelectedGeneration] = useState<string>("Gen 9 (SV)");
   const [analyzingMoves, setAnalyzingMoves] = useState(false);
   const [moveDetails, setMoveDetails] = useState<Array<{
     name: string;
@@ -66,7 +68,9 @@ export default function BattlePage() {
     pp: number;
     damageClass: string;
     effectiveness: number;
+    effect: string;
   }>>([]);
+  const [selectedMoveForDetails, setSelectedMoveForDetails] = useState<typeof moveDetails[0] | null>(null);
 
   const myPokemon = useMemo(() => {
     return currentTeam.map(pair => playerSide === 1 ? pair.player1 : pair.player2);
@@ -118,14 +122,16 @@ export default function BattlePage() {
   const getLastFourMoves = () => {
     if (!opponentData) return [];
     
-    const genVersions = generationMap[selectedGeneration] || [];
+    const versionGroup = generationMap[selectedGeneration];
+    if (!versionGroup) return [];
     
+    // Get moves for the SPECIFIC version group only (fixes inaccuracy issue)
     const levelUpMoves = opponentData.moves
       .flatMap(moveData => 
         moveData.version_group_details
           .filter(detail => 
             detail.move_learn_method.name === "level-up" &&
-            genVersions.includes(detail.version_group.name)
+            detail.version_group.name === versionGroup
           )
           .map(detail => ({
             name: moveData.move.name,
@@ -135,7 +141,7 @@ export default function BattlePage() {
       )
       .sort((a, b) => a.level - b.level);
 
-    // Remove duplicates (keep earliest level)
+    // Remove duplicates (shouldn't be any now, but just in case)
     const uniqueMoves = levelUpMoves.reduce((acc, move) => {
       if (!acc.find(m => m.name === move.name)) {
         acc.push(move);
@@ -186,6 +192,10 @@ export default function BattlePage() {
           const details = await getMoveDetails(move.url);
           const effectiveness = isMoveEffective(details.type.name, myTypes);
           
+          // Get English effect description
+          const effectEntry = details.effect_entries.find(e => e.language.name === "en");
+          const effect = effectEntry?.short_effect || effectEntry?.effect || "No description available.";
+          
           detailedMoves.push({
             name: move.name,
             type: details.type.name,
@@ -194,6 +204,7 @@ export default function BattlePage() {
             pp: details.pp,
             damageClass: details.damage_class.name,
             effectiveness,
+            effect,
           });
         } catch (error) {
           console.error(`Failed to load move: ${move.name}`, error);
@@ -207,6 +218,55 @@ export default function BattlePage() {
     } finally {
       setAnalyzingMoves(false);
     }
+  };
+
+  const getOpponentWeaknesses = () => {
+    if (!opponentData) return { weaknesses: [], doubleWeaknesses: [], immunities: [], resistances: [] };
+    
+    const types = opponentData.types.map(t => t.type.name);
+    const weaknesses = new Set<string>();
+    const resistances = new Set<string>();
+    const immunities = new Set<string>();
+
+    types.forEach(type => {
+      const effectiveness = TYPE_EFFECTIVENESS[type];
+      if (effectiveness) {
+        effectiveness.weakTo.forEach(t => weaknesses.add(t));
+        effectiveness.resistantTo.forEach(t => resistances.add(t));
+        effectiveness.immuneTo.forEach(t => immunities.add(t));
+      }
+    });
+
+    // Remove overlaps
+    resistances.forEach(r => weaknesses.delete(r));
+    immunities.forEach(i => {
+      weaknesses.delete(i);
+      resistances.delete(i);
+    });
+
+    // Check for double weaknesses
+    const doubleWeaknesses = new Set<string>();
+    if (types.length === 2) {
+      const [type1, type2] = types;
+      const eff1 = TYPE_EFFECTIVENESS[type1];
+      const eff2 = TYPE_EFFECTIVENESS[type2];
+
+      if (eff1 && eff2) {
+        eff1.weakTo.forEach(t => {
+          if (eff2.weakTo.includes(t)) {
+            doubleWeaknesses.add(t);
+            weaknesses.delete(t);
+          }
+        });
+      }
+    }
+
+    return {
+      weaknesses: Array.from(weaknesses),
+      doubleWeaknesses: Array.from(doubleWeaknesses),
+      resistances: Array.from(resistances),
+      immunities: Array.from(immunities),
+    };
   };
 
   const getTypeEffectiveness = (pokemon: PokemonBase) => {
@@ -443,51 +503,86 @@ export default function BattlePage() {
             </div>
 
             {opponentData && (
-              <div className="mt-4 bg-poke-dark p-4 rounded-lg">
-                <div className="flex items-center gap-4">
-                  {opponentData.sprites.front_default && (
-                    <Image
-                      src={opponentData.sprites.front_default}
-                      alt={opponentData.name}
-                      width={80}
-                      height={80}
-                      className="object-contain"
-                    />
-                  )}
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <h3 className="text-xl font-bold text-slate-100 capitalize">
-                        {opponentData.name.replace("-", " ")}
-                      </h3>
-                      <span className="text-slate-400 font-semibold">Lv. {opponentLevel}</span>
-                      <div className="flex gap-1">
-                        {opponentData.types.map(t => (
-                          <span
-                            key={t.type.name}
-                            className={`${typeColors[t.type.name]} px-2 py-1 rounded text-white text-xs font-semibold capitalize`}
-                          >
-                            {t.type.name}
-                          </span>
+              <>
+                <div className="mt-4 bg-poke-dark p-4 rounded-lg">
+                  <div className="flex items-center gap-4">
+                    {opponentData.sprites.front_default && (
+                      <Image
+                        src={opponentData.sprites.front_default}
+                        alt={opponentData.name}
+                        width={80}
+                        height={80}
+                        className="object-contain"
+                      />
+                    )}
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <h3 className="text-xl font-bold text-slate-100 capitalize">
+                          {opponentData.name.replace("-", " ")}
+                        </h3>
+                        <span className="text-slate-400 font-semibold">Lv. {opponentLevel}</span>
+                        <div className="flex gap-1">
+                          {opponentData.types.map(t => (
+                            <span
+                              key={t.type.name}
+                              className={`${typeColors[t.type.name]} px-2 py-1 rounded text-white text-xs font-semibold capitalize`}
+                            >
+                              {t.type.name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      {/* Compact Base Stats */}
+                      <div className="flex gap-4 text-xs">
+                        {opponentData.stats.map(stat => (
+                          <div key={stat.stat.name} className="flex items-center gap-1">
+                            <span className="text-slate-400 capitalize">
+                              {stat.stat.name === "special-attack" ? "SpA" : 
+                               stat.stat.name === "special-defense" ? "SpD" :
+                               stat.stat.name.charAt(0).toUpperCase() + stat.stat.name.slice(1, 3)}:
+                            </span>
+                            <span className="text-slate-200 font-bold">{stat.base_stat}</span>
+                          </div>
                         ))}
                       </div>
                     </div>
-                    
-                    {/* Compact Base Stats */}
-                    <div className="flex gap-4 text-xs">
-                      {opponentData.stats.map(stat => (
-                        <div key={stat.stat.name} className="flex items-center gap-1">
-                          <span className="text-slate-400 capitalize">
-                            {stat.stat.name === "special-attack" ? "SpA" : 
-                             stat.stat.name === "special-defense" ? "SpD" :
-                             stat.stat.name.charAt(0).toUpperCase() + stat.stat.name.slice(1, 3)}:
-                          </span>
-                          <span className="text-slate-200 font-bold">{stat.base_stat}</span>
-                        </div>
-                      ))}
-                    </div>
                   </div>
                 </div>
-              </div>
+
+                {/* Opponent Weaknesses */}
+                <div className="mt-3 bg-poke-dark p-3 rounded-lg">
+                  <h4 className="text-sm font-bold text-slate-300 mb-2">Opponent's Weaknesses:</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {(() => {
+                      const weaknessData = getOpponentWeaknesses();
+                      return (
+                        <>
+                          {weaknessData.doubleWeaknesses.map(type => (
+                            <span
+                              key={type}
+                              className={`${typeColors[type]} px-2 py-1 rounded text-white text-xs font-bold capitalize`}
+                            >
+                              {type} (4x!)
+                            </span>
+                          ))}
+                          {weaknessData.weaknesses.map(type => (
+                            <span
+                              key={type}
+                              className={`${typeColors[type]} px-2 py-1 rounded text-white text-xs font-semibold capitalize`}
+                            >
+                              {type} (2x)
+                            </span>
+                          ))}
+                          {weaknessData.weaknesses.length === 0 && weaknessData.doubleWeaknesses.length === 0 && (
+                            <span className="text-slate-400 text-xs">No major weaknesses</span>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                </div>
+              </>
             )}
           </div>
 
@@ -542,7 +637,11 @@ export default function BattlePage() {
                       }
 
                       return (
-                        <div key={idx} className="bg-poke-dark p-3 rounded-lg flex items-center gap-3">
+                        <button
+                          key={idx}
+                          onClick={() => setSelectedMoveForDetails(move)}
+                          className="bg-poke-dark p-3 rounded-lg flex items-center gap-3 hover:bg-poke-hover transition-colors cursor-pointer w-full text-left"
+                        >
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-1">
                               <span className="font-bold text-slate-100 capitalize text-sm">
@@ -562,7 +661,7 @@ export default function BattlePage() {
                           <div className={`${effectivenessColor} ${effectivenessText} px-3 py-2 rounded font-bold text-sm whitespace-nowrap`}>
                             {effectivenessLabel}
                           </div>
-                        </div>
+                        </button>
                       );
                     })}
                   </div>
@@ -739,6 +838,87 @@ export default function BattlePage() {
             </div>
           )}
         </>
+      )}
+
+      {/* Move Details Modal */}
+      {selectedMoveForDetails && (
+        <div 
+          className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
+          onClick={() => setSelectedMoveForDetails(null)}
+        >
+          <div 
+            className="card max-w-lg w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h3 className="text-2xl font-bold text-poke-accent capitalize">
+                  {selectedMoveForDetails.name.replace("-", " ")}
+                </h3>
+                <div className="flex gap-2 mt-2">
+                  <span className={`${typeColors[selectedMoveForDetails.type]} px-3 py-1 rounded text-white text-sm font-semibold capitalize`}>
+                    {selectedMoveForDetails.type}
+                  </span>
+                  <span className="bg-slate-700 px-3 py-1 rounded text-slate-300 text-sm capitalize">
+                    {selectedMoveForDetails.damageClass}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedMoveForDetails(null)}
+                className="text-slate-400 hover:text-slate-200 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4 mb-4">
+              <div className="bg-poke-dark p-3 rounded text-center">
+                <div className="text-slate-400 text-xs mb-1">Power</div>
+                <div className="text-slate-100 font-bold">{selectedMoveForDetails.power || "—"}</div>
+              </div>
+              <div className="bg-poke-dark p-3 rounded text-center">
+                <div className="text-slate-400 text-xs mb-1">Accuracy</div>
+                <div className="text-slate-100 font-bold">{selectedMoveForDetails.accuracy ? `${selectedMoveForDetails.accuracy}%` : "—"}</div>
+              </div>
+              <div className="bg-poke-dark p-3 rounded text-center">
+                <div className="text-slate-400 text-xs mb-1">PP</div>
+                <div className="text-slate-100 font-bold">{selectedMoveForDetails.pp}</div>
+              </div>
+            </div>
+
+            <div className="bg-poke-dark p-4 rounded mb-4">
+              <h4 className="text-sm font-bold text-slate-400 mb-2">Effect:</h4>
+              <p className="text-slate-300 text-sm">{selectedMoveForDetails.effect}</p>
+            </div>
+
+            {selectedPokemon && (
+              <div className={`p-4 rounded ${
+                selectedMoveForDetails.effectiveness >= 2 ? "bg-red-900/30 border border-red-500" :
+                selectedMoveForDetails.effectiveness === 0 ? "bg-green-900/30 border border-green-500" :
+                selectedMoveForDetails.effectiveness <= 0.5 ? "bg-green-900/30 border border-green-500" :
+                "bg-slate-700/30 border border-slate-600"
+              }`}>
+                <h4 className="text-sm font-bold text-slate-300 mb-1">
+                  vs {selectedPokemon.name}:
+                </h4>
+                <p className={`font-bold ${
+                  selectedMoveForDetails.effectiveness >= 2 ? "text-red-300" :
+                  selectedMoveForDetails.effectiveness === 0 ? "text-green-300" :
+                  selectedMoveForDetails.effectiveness <= 0.5 ? "text-green-300" :
+                  "text-slate-300"
+                }`}>
+                  {selectedMoveForDetails.effectiveness === 0 ? "Immune (0x damage)" :
+                   selectedMoveForDetails.effectiveness >= 4 ? "4x Super Effective!" :
+                   selectedMoveForDetails.effectiveness >= 2 ? "Super Effective (2x)" :
+                   selectedMoveForDetails.effectiveness <= 0.25 ? "Quad Resisted (¼x)" :
+                   selectedMoveForDetails.effectiveness <= 0.5 ? "Resisted (½x)" :
+                   "Neutral damage"}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
