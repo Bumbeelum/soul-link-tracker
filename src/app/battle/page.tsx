@@ -6,7 +6,7 @@ import { PokemonBase } from "@/types/core";
 import Image from "next/image";
 import Link from "next/link";
 import PokemonAutocomplete from "@/components/PokemonAutocomplete";
-import { getPokemonByName, PokeApiPokemon } from "@/services/pokeapi";
+import { getPokemonByName, PokeApiPokemon, getMoveDetails } from "@/services/pokeapi";
 
 // Type effectiveness chart
 const TYPE_EFFECTIVENESS: Record<string, { weakTo: string[]; resistantTo: string[]; immuneTo: string[] }> = {
@@ -56,6 +56,13 @@ export default function BattlePage() {
   const [opponentData, setOpponentData] = useState<PokeApiPokemon | null>(null);
   const [loadingOpponent, setLoadingOpponent] = useState(false);
   const [selectedGeneration, setSelectedGeneration] = useState<string>("Gen 9");
+  const [analyzingMoves, setAnalyzingMoves] = useState(false);
+  const [moveAnalysis, setMoveAnalysis] = useState<{
+    opponentSuperEffective: string[];
+    yourSuperEffective: string[];
+    opponentNeutralOrWorse: string[];
+    yourNeutralOrWorse: string[];
+  } | null>(null);
 
   const myPokemon = useMemo(() => {
     return currentTeam.map(pair => playerSide === 1 ? pair.player1 : pair.player2);
@@ -133,6 +140,91 @@ export default function BattlePage() {
     }, [] as typeof levelUpMoves);
 
     return uniqueMoves;
+  };
+
+  const isMoveEffective = (moveType: string, defenderTypes: string[]) => {
+    let multiplier = 1;
+    
+    defenderTypes.forEach(defType => {
+      const effectiveness = TYPE_EFFECTIVENESS[defType];
+      if (effectiveness) {
+        if (effectiveness.weakTo.includes(moveType)) {
+          multiplier *= 2;
+        } else if (effectiveness.resistantTo.includes(moveType)) {
+          multiplier *= 0.5;
+        } else if (effectiveness.immuneTo.includes(moveType)) {
+          multiplier = 0;
+        }
+      }
+    });
+    
+    return multiplier;
+  };
+
+  const analyzeMoveMatchup = async () => {
+    if (!selectedPokemon || !opponentData) return;
+    
+    setAnalyzingMoves(true);
+    setMoveAnalysis(null);
+
+    try {
+      const myTypes = [selectedPokemon.primaryType, selectedPokemon.secondaryType]
+        .filter(Boolean)
+        .map(t => t!.toLowerCase());
+      const oppTypes = getOpponentTypes();
+      
+      const moves = getFilteredMoves();
+      
+      // Analyze opponent's moves
+      const opponentSuperEffective: string[] = [];
+      const opponentNeutralOrWorse: string[] = [];
+      
+      // Sample up to 10 moves to avoid too many API calls
+      const movesToCheck = moves.slice(0, Math.min(moves.length, 10));
+      
+      for (const move of movesToCheck) {
+        try {
+          const moveDetails = await getMoveDetails(move.url);
+          const moveType = moveDetails.type.name;
+          const effectiveness = isMoveEffective(moveType, myTypes);
+          
+          const moveInfo = `${move.name.replace("-", " ")} (${moveType})`;
+          
+          if (effectiveness >= 2) {
+            opponentSuperEffective.push(moveInfo);
+          } else {
+            opponentNeutralOrWorse.push(moveInfo);
+          }
+        } catch (error) {
+          // Skip moves that fail to load
+        }
+      }
+
+      // Check if YOUR Pokemon's types would be super effective
+      const yourSuperEffective: string[] = [];
+      const yourNeutralOrWorse: string[] = [];
+      
+      myTypes.forEach(type => {
+        const effectiveness = isMoveEffective(type, oppTypes);
+        if (effectiveness >= 2) {
+          yourSuperEffective.push(`${type.toUpperCase()}-type moves`);
+        } else if (effectiveness > 0) {
+          yourNeutralOrWorse.push(`${type.toUpperCase()}-type moves`);
+        }
+      });
+
+      setMoveAnalysis({
+        opponentSuperEffective,
+        yourSuperEffective,
+        opponentNeutralOrWorse,
+        yourNeutralOrWorse,
+      });
+    } catch (error) {
+      console.error("Error analyzing moves:", error);
+      alert("Failed to analyze moves. Please try again.");
+    } finally {
+      setAnalyzingMoves(false);
+    }
   };
 
   const getTypeEffectiveness = (pokemon: PokemonBase) => {
@@ -376,91 +468,58 @@ export default function BattlePage() {
           {/* Matchup Analysis */}
           {selectedPokemon && opponentData && (
             <div className="card">
-              <h2 className="text-2xl font-bold text-poke-accent mb-6">
-                Matchup: {selectedPokemon.name} vs {opponentData.name.replace("-", " ")}
-              </h2>
-
-              <div className="grid md:grid-cols-2 gap-6">
-                {/* Your Pokemon Offense */}
-                <div className="bg-poke-dark p-4 rounded-lg">
-                  <h3 className="text-lg font-bold text-blue-400 mb-3">
-                    Your Offense (How effective are {selectedPokemon.name}'s moves?)
-                  </h3>
-                  {(() => {
-                    const myTypes = [selectedPokemon.primaryType, selectedPokemon.secondaryType]
-                      .filter(Boolean)
-                      .map(t => t!.toLowerCase());
-                    const oppTypes = getOpponentTypes();
-                    const damage = calculateMatchupDamage(myTypes, oppTypes);
-                    
-                    let color = "text-slate-400";
-                    let label = "Neutral";
-                    
-                    if (damage === 0) {
-                      color = "text-purple-400";
-                      label = "IMMUNE (0x damage)";
-                    } else if (damage >= 4) {
-                      color = "text-green-500";
-                      label = "SUPER EFFECTIVE (4x damage)";
-                    } else if (damage >= 2) {
-                      color = "text-green-400";
-                      label = "Super Effective (2x damage)";
-                    } else if (damage <= 0.25) {
-                      color = "text-red-500";
-                      label = "Very Resisted (¼x damage)";
-                    } else if (damage <= 0.5) {
-                      color = "text-orange-400";
-                      label = "Not Very Effective (½x damage)";
-                    }
-                    
-                    return (
-                      <div className={`${color} text-2xl font-bold text-center p-4`}>
-                        {label}
-                      </div>
-                    );
-                  })()}
-                </div>
-
-                {/* Your Pokemon Defense */}
-                <div className="bg-poke-dark p-4 rounded-lg">
-                  <h3 className="text-lg font-bold text-red-400 mb-3">
-                    Your Defense (How effective are opponent's moves?)
-                  </h3>
-                  {(() => {
-                    const myTypes = [selectedPokemon.primaryType, selectedPokemon.secondaryType]
-                      .filter(Boolean)
-                      .map(t => t!.toLowerCase());
-                    const oppTypes = getOpponentTypes();
-                    const damage = calculateMatchupDamage(oppTypes, myTypes);
-                    
-                    let color = "text-slate-400";
-                    let label = "Neutral";
-                    
-                    if (damage === 0) {
-                      color = "text-green-500";
-                      label = "IMMUNE (0x damage taken!)";
-                    } else if (damage >= 4) {
-                      color = "text-red-500";
-                      label = "4x WEAK (4x damage taken!)";
-                    } else if (damage >= 2) {
-                      color = "text-orange-400";
-                      label = "Weak (2x damage taken)";
-                    } else if (damage <= 0.25) {
-                      color = "text-green-500";
-                      label = "Quad Resist (¼x damage taken)";
-                    } else if (damage <= 0.5) {
-                      color = "text-green-400";
-                      label = "Resist (½x damage taken)";
-                    }
-                    
-                    return (
-                      <div className={`${color} text-2xl font-bold text-center p-4`}>
-                        {label}
-                      </div>
-                    );
-                  })()}
-                </div>
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-poke-accent">
+                  Matchup: {selectedPokemon.name} vs {opponentData.name.replace("-", " ")}
+                </h2>
+                <button
+                  onClick={analyzeMoveMatchup}
+                  disabled={analyzingMoves}
+                  className="btn-primary disabled:opacity-50"
+                >
+                  {analyzingMoves ? "Analyzing..." : "Analyze Matchup"}
+                </button>
               </div>
+
+              {moveAnalysis && (
+                <div className="grid md:grid-cols-2 gap-6 mb-6">
+                  {/* Opponent's Super Effective Moves */}
+                  <div className="bg-poke-dark p-4 rounded-lg">
+                    <h3 className="text-lg font-bold text-red-400 mb-3">
+                      ⚠️ Opponent Has Super Effective Moves:
+                    </h3>
+                    {moveAnalysis.opponentSuperEffective.length > 0 ? (
+                      <ul className="space-y-2">
+                        {moveAnalysis.opponentSuperEffective.map((move, idx) => (
+                          <li key={idx} className="text-red-300 capitalize">
+                            • {move}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-green-400">✓ No super effective moves found!</p>
+                    )}
+                  </div>
+
+                  {/* Your Super Effective Moves */}
+                  <div className="bg-poke-dark p-4 rounded-lg">
+                    <h3 className="text-lg font-bold text-green-400 mb-3">
+                      ✓ You Can Use Super Effective:
+                    </h3>
+                    {moveAnalysis.yourSuperEffective.length > 0 ? (
+                      <ul className="space-y-2">
+                        {moveAnalysis.yourSuperEffective.map((move, idx) => (
+                          <li key={idx} className="text-green-300 capitalize">
+                            • {move}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-orange-400">✗ No super effective moves available</p>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <div className="mt-6 pt-6 border-t border-slate-700">
                 <div className="flex items-center justify-between mb-4">
