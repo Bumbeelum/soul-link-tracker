@@ -54,15 +54,19 @@ export default function BattlePage() {
   // New states for opponent selection
   const [opponentName, setOpponentName] = useState<string>("");
   const [opponentData, setOpponentData] = useState<PokeApiPokemon | null>(null);
+  const [opponentLevel, setOpponentLevel] = useState<number>(50);
   const [loadingOpponent, setLoadingOpponent] = useState(false);
   const [selectedGeneration, setSelectedGeneration] = useState<string>("Gen 9");
   const [analyzingMoves, setAnalyzingMoves] = useState(false);
-  const [moveAnalysis, setMoveAnalysis] = useState<{
-    opponentSuperEffective: string[];
-    yourSuperEffective: string[];
-    opponentNeutralOrWorse: string[];
-    yourNeutralOrWorse: string[];
-  } | null>(null);
+  const [moveDetails, setMoveDetails] = useState<Array<{
+    name: string;
+    type: string;
+    power: number | null;
+    accuracy: number | null;
+    pp: number;
+    damageClass: string;
+    effectiveness: number;
+  }>>([]);
 
   const myPokemon = useMemo(() => {
     return currentTeam.map(pair => playerSide === 1 ? pair.player1 : pair.player2);
@@ -111,7 +115,7 @@ export default function BattlePage() {
     return multiplier;
   };
 
-  const getFilteredMoves = () => {
+  const getLastFourMoves = () => {
     if (!opponentData) return [];
     
     const genVersions = generationMap[selectedGeneration] || [];
@@ -139,7 +143,9 @@ export default function BattlePage() {
       return acc;
     }, [] as typeof levelUpMoves);
 
-    return uniqueMoves;
+    // Filter by level and get last 4
+    const movesUpToLevel = uniqueMoves.filter(move => move.level <= opponentLevel);
+    return movesUpToLevel.slice(-4); // Last 4 learned moves
   };
 
   const isMoveEffective = (moveType: string, defenderTypes: string[]) => {
@@ -165,60 +171,36 @@ export default function BattlePage() {
     if (!selectedPokemon || !opponentData) return;
     
     setAnalyzingMoves(true);
-    setMoveAnalysis(null);
+    setMoveDetails([]);
 
     try {
       const myTypes = [selectedPokemon.primaryType, selectedPokemon.secondaryType]
         .filter(Boolean)
         .map(t => t!.toLowerCase());
-      const oppTypes = getOpponentTypes();
       
-      const moves = getFilteredMoves();
+      const lastFourMoves = getLastFourMoves();
+      const detailedMoves = [];
       
-      // Analyze opponent's moves
-      const opponentSuperEffective: string[] = [];
-      const opponentNeutralOrWorse: string[] = [];
-      
-      // Sample up to 10 moves to avoid too many API calls
-      const movesToCheck = moves.slice(0, Math.min(moves.length, 10));
-      
-      for (const move of movesToCheck) {
+      for (const move of lastFourMoves) {
         try {
-          const moveDetails = await getMoveDetails(move.url);
-          const moveType = moveDetails.type.name;
-          const effectiveness = isMoveEffective(moveType, myTypes);
+          const details = await getMoveDetails(move.url);
+          const effectiveness = isMoveEffective(details.type.name, myTypes);
           
-          const moveInfo = `${move.name.replace("-", " ")} (${moveType})`;
-          
-          if (effectiveness >= 2) {
-            opponentSuperEffective.push(moveInfo);
-          } else {
-            opponentNeutralOrWorse.push(moveInfo);
-          }
+          detailedMoves.push({
+            name: move.name,
+            type: details.type.name,
+            power: details.power,
+            accuracy: details.accuracy,
+            pp: details.pp,
+            damageClass: details.damage_class.name,
+            effectiveness,
+          });
         } catch (error) {
-          // Skip moves that fail to load
+          console.error(`Failed to load move: ${move.name}`, error);
         }
       }
 
-      // Check if YOUR Pokemon's types would be super effective
-      const yourSuperEffective: string[] = [];
-      const yourNeutralOrWorse: string[] = [];
-      
-      myTypes.forEach(type => {
-        const effectiveness = isMoveEffective(type, oppTypes);
-        if (effectiveness >= 2) {
-          yourSuperEffective.push(`${type.toUpperCase()}-type moves`);
-        } else if (effectiveness > 0) {
-          yourNeutralOrWorse.push(`${type.toUpperCase()}-type moves`);
-        }
-      });
-
-      setMoveAnalysis({
-        opponentSuperEffective,
-        yourSuperEffective,
-        opponentNeutralOrWorse,
-        yourNeutralOrWorse,
-      });
+      setMoveDetails(detailedMoves);
     } catch (error) {
       console.error("Error analyzing moves:", error);
       alert("Failed to analyze moves. Please try again.");
@@ -424,6 +406,33 @@ export default function BattlePage() {
                   placeholder="e.g., Garchomp, Raichu-Alola"
                 />
               </div>
+              <div className="w-32">
+                <label className="block text-sm font-semibold text-slate-400 mb-2">
+                  Level
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={opponentLevel}
+                  onChange={(e) => setOpponentLevel(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
+                  className="w-full bg-poke-dark border border-slate-700 rounded px-3 py-2 text-slate-300"
+                />
+              </div>
+              <div className="w-40">
+                <label className="block text-sm font-semibold text-slate-400 mb-2">
+                  Generation
+                </label>
+                <select
+                  value={selectedGeneration}
+                  onChange={(e) => setSelectedGeneration(e.target.value)}
+                  className="w-full bg-poke-dark border border-slate-700 rounded px-3 py-2 text-slate-300"
+                >
+                  {Object.keys(generationMap).map(gen => (
+                    <option key={gen} value={gen}>{gen}</option>
+                  ))}
+                </select>
+              </div>
               <button
                 onClick={handleOpponentSearch}
                 disabled={loadingOpponent || !opponentName}
@@ -435,28 +444,45 @@ export default function BattlePage() {
 
             {opponentData && (
               <div className="mt-6 bg-poke-dark p-4 rounded-lg">
-                <div className="flex items-center gap-4">
-                  {opponentData.sprites.front_default && (
-                    <Image
-                      src={opponentData.sprites.front_default}
-                      alt={opponentData.name}
-                      width={96}
-                      height={96}
-                      className="object-contain"
-                    />
-                  )}
-                  <div>
-                    <h3 className="text-2xl font-bold text-slate-100 capitalize">
-                      {opponentData.name.replace("-", " ")}
-                    </h3>
-                    <div className="flex gap-2 mt-2">
-                      {opponentData.types.map(t => (
-                        <span
-                          key={t.type.name}
-                          className={`${typeColors[t.type.name]} px-3 py-1 rounded-lg text-white font-semibold capitalize`}
-                        >
-                          {t.type.name}
-                        </span>
+                <div className="flex items-start gap-6">
+                  <div className="flex items-center gap-4">
+                    {opponentData.sprites.front_default && (
+                      <Image
+                        src={opponentData.sprites.front_default}
+                        alt={opponentData.name}
+                        width={96}
+                        height={96}
+                        className="object-contain"
+                      />
+                    )}
+                    <div>
+                      <h3 className="text-2xl font-bold text-slate-100 capitalize">
+                        {opponentData.name.replace("-", " ")} (Lv. {opponentLevel})
+                      </h3>
+                      <div className="flex gap-2 mt-2">
+                        {opponentData.types.map(t => (
+                          <span
+                            key={t.type.name}
+                            className={`${typeColors[t.type.name]} px-3 py-1 rounded-lg text-white font-semibold capitalize`}
+                          >
+                            {t.type.name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Base Stats */}
+                  <div className="flex-1">
+                    <h4 className="text-sm font-bold text-slate-400 mb-2">Base Stats</h4>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      {opponentData.stats.map(stat => (
+                        <div key={stat.stat.name} className="flex justify-between items-center">
+                          <span className="text-slate-400 capitalize">
+                            {stat.stat.name.replace("-", " ")}:
+                          </span>
+                          <span className="text-slate-200 font-bold">{stat.base_stat}</span>
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -481,86 +507,94 @@ export default function BattlePage() {
                 </button>
               </div>
 
-              {moveAnalysis && (
-                <div className="grid md:grid-cols-2 gap-6 mb-6">
-                  {/* Opponent's Super Effective Moves */}
-                  <div className="bg-poke-dark p-4 rounded-lg">
-                    <h3 className="text-lg font-bold text-red-400 mb-3">
-                      ⚠️ Opponent Has Super Effective Moves:
-                    </h3>
-                    {moveAnalysis.opponentSuperEffective.length > 0 ? (
-                      <ul className="space-y-2">
-                        {moveAnalysis.opponentSuperEffective.map((move, idx) => (
-                          <li key={idx} className="text-red-300 capitalize">
-                            • {move}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="text-green-400">✓ No super effective moves found!</p>
-                    )}
-                  </div>
+              {moveDetails.length > 0 && (
+                <div className="space-y-4 mb-6">
+                  <h3 className="text-xl font-bold text-slate-100">
+                    Opponent's Moveset (Last 4 Learned Moves at Lv. {opponentLevel})
+                  </h3>
+                  
+                  {moveDetails.map((move, idx) => {
+                    let effectivenessColor = "text-slate-400";
+                    let effectivenessLabel = "Neutral";
+                    
+                    if (move.effectiveness === 0) {
+                      effectivenessColor = "text-green-500";
+                      effectivenessLabel = "IMMUNE";
+                    } else if (move.effectiveness >= 4) {
+                      effectivenessColor = "text-red-500";
+                      effectivenessLabel = "4x SUPER EFFECTIVE!";
+                    } else if (move.effectiveness >= 2) {
+                      effectivenessColor = "text-orange-400";
+                      effectivenessLabel = "Super Effective";
+                    } else if (move.effectiveness <= 0.25) {
+                      effectivenessColor = "text-green-400";
+                      effectivenessLabel = "¼x Resisted";
+                    } else if (move.effectiveness <= 0.5) {
+                      effectivenessColor = "text-green-300";
+                      effectivenessLabel = "½x Resisted";
+                    }
 
-                  {/* Your Super Effective Moves */}
-                  <div className="bg-poke-dark p-4 rounded-lg">
-                    <h3 className="text-lg font-bold text-green-400 mb-3">
-                      ✓ You Can Use Super Effective:
-                    </h3>
-                    {moveAnalysis.yourSuperEffective.length > 0 ? (
-                      <ul className="space-y-2">
-                        {moveAnalysis.yourSuperEffective.map((move, idx) => (
-                          <li key={idx} className="text-green-300 capitalize">
-                            • {move}
-                          </li>
-                        ))}
-                      </ul>
+                    return (
+                      <div key={idx} className="bg-poke-dark p-4 rounded-lg">
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex-1">
+                            <h4 className="text-lg font-bold text-slate-100 capitalize mb-1">
+                              {move.name.replace("-", " ")}
+                            </h4>
+                            <div className="flex gap-2 items-center flex-wrap">
+                              <span className={`${typeColors[move.type]} px-2 py-1 rounded text-white text-sm font-semibold capitalize`}>
+                                {move.type}
+                              </span>
+                              <span className="bg-slate-700 px-2 py-1 rounded text-slate-300 text-sm capitalize">
+                                {move.damageClass}
+                              </span>
+                            </div>
+                          </div>
+                          <div className={`${effectivenessColor} font-bold text-right`}>
+                            {effectivenessLabel}
+                            <div className="text-sm">
+                              ({move.effectiveness}x damage)
+                            </div>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-4 mt-3 text-sm">
+                          <div>
+                            <span className="text-slate-400">Power:</span>
+                            <span className="text-slate-200 font-bold ml-2">
+                              {move.power || "—"}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400">Accuracy:</span>
+                            <span className="text-slate-200 font-bold ml-2">
+                              {move.accuracy ? `${move.accuracy}%` : "—"}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400">PP:</span>
+                            <span className="text-slate-200 font-bold ml-2">{move.pp}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Summary */}
+                  <div className="bg-poke-dark p-4 rounded-lg border-2 border-poke-accent">
+                    <h4 className="font-bold text-slate-100 mb-2">Battle Recommendation:</h4>
+                    {moveDetails.some(m => m.effectiveness >= 2) ? (
+                      <p className="text-red-400">
+                        ⚠️ <strong>WARNING:</strong> Opponent has super effective moves! Consider switching out.
+                      </p>
                     ) : (
-                      <p className="text-orange-400">✗ No super effective moves available</p>
+                      <p className="text-green-400">
+                        ✓ You're safe! Opponent has no super effective moves against you.
+                      </p>
                     )}
                   </div>
                 </div>
               )}
 
-              <div className="mt-6 pt-6 border-t border-slate-700">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-bold text-slate-100">
-                    Opponent's Moveset
-                  </h3>
-                  <div className="flex gap-2 items-center">
-                    <label className="text-sm text-slate-400">Generation:</label>
-                    <select
-                      value={selectedGeneration}
-                      onChange={(e) => setSelectedGeneration(e.target.value)}
-                      className="bg-poke-dark border border-slate-700 rounded px-3 py-1 text-slate-300"
-                    >
-                      {Object.keys(generationMap).map(gen => (
-                        <option key={gen} value={gen}>{gen}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="max-h-96 overflow-y-auto space-y-2">
-                  {getFilteredMoves().map((move, idx) => (
-                    <div
-                      key={idx}
-                      className="bg-poke-dark px-4 py-2 rounded flex justify-between items-center"
-                    >
-                      <span className="text-slate-200 capitalize">
-                        {move.name.replace("-", " ")}
-                      </span>
-                      <span className="text-slate-400 text-sm">
-                        Level {move.level}
-                      </span>
-                    </div>
-                  ))}
-                  {getFilteredMoves().length === 0 && (
-                    <p className="text-slate-500 text-center py-4">
-                      No moves found for {selectedGeneration}
-                    </p>
-                  )}
-                </div>
-              </div>
             </div>
           )}
 
