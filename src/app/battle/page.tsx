@@ -443,43 +443,43 @@ export default function BattlePage() {
             </div>
 
             {opponentData && (
-              <div className="mt-6 bg-poke-dark p-4 rounded-lg">
-                <div className="flex items-start gap-6">
-                  <div className="flex items-center gap-4">
-                    {opponentData.sprites.front_default && (
-                      <Image
-                        src={opponentData.sprites.front_default}
-                        alt={opponentData.name}
-                        width={96}
-                        height={96}
-                        className="object-contain"
-                      />
-                    )}
-                    <div>
-                      <h3 className="text-2xl font-bold text-slate-100 capitalize">
-                        {opponentData.name.replace("-", " ")} (Lv. {opponentLevel})
+              <div className="mt-4 bg-poke-dark p-4 rounded-lg">
+                <div className="flex items-center gap-4">
+                  {opponentData.sprites.front_default && (
+                    <Image
+                      src={opponentData.sprites.front_default}
+                      alt={opponentData.name}
+                      width={80}
+                      height={80}
+                      className="object-contain"
+                    />
+                  )}
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <h3 className="text-xl font-bold text-slate-100 capitalize">
+                        {opponentData.name.replace("-", " ")}
                       </h3>
-                      <div className="flex gap-2 mt-2">
+                      <span className="text-slate-400 font-semibold">Lv. {opponentLevel}</span>
+                      <div className="flex gap-1">
                         {opponentData.types.map(t => (
                           <span
                             key={t.type.name}
-                            className={`${typeColors[t.type.name]} px-3 py-1 rounded-lg text-white font-semibold capitalize`}
+                            className={`${typeColors[t.type.name]} px-2 py-1 rounded text-white text-xs font-semibold capitalize`}
                           >
                             {t.type.name}
                           </span>
                         ))}
                       </div>
                     </div>
-                  </div>
-
-                  {/* Base Stats */}
-                  <div className="flex-1">
-                    <h4 className="text-sm font-bold text-slate-400 mb-2">Base Stats</h4>
-                    <div className="grid grid-cols-2 gap-2 text-sm">
+                    
+                    {/* Compact Base Stats */}
+                    <div className="flex gap-4 text-xs">
                       {opponentData.stats.map(stat => (
-                        <div key={stat.stat.name} className="flex justify-between items-center">
+                        <div key={stat.stat.name} className="flex items-center gap-1">
                           <span className="text-slate-400 capitalize">
-                            {stat.stat.name.replace("-", " ")}:
+                            {stat.stat.name === "special-attack" ? "SpA" : 
+                             stat.stat.name === "special-defense" ? "SpD" :
+                             stat.stat.name.charAt(0).toUpperCase() + stat.stat.name.slice(1, 3)}:
                           </span>
                           <span className="text-slate-200 font-bold">{stat.base_stat}</span>
                         </div>
@@ -494,104 +494,93 @@ export default function BattlePage() {
           {/* Matchup Analysis */}
           {selectedPokemon && opponentData && (
             <div className="card">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold text-poke-accent">
-                  Matchup: {selectedPokemon.name} vs {opponentData.name.replace("-", " ")}
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-poke-accent">
+                  {selectedPokemon.name} vs {opponentData.name.replace("-", " ")}
                 </h2>
                 <button
                   onClick={analyzeMoveMatchup}
                   disabled={analyzingMoves}
                   className="btn-primary disabled:opacity-50"
                 >
-                  {analyzingMoves ? "Analyzing..." : "Analyze Matchup"}
+                  {analyzingMoves ? "Analyzing..." : "Analyze Moves"}
                 </button>
               </div>
 
               {moveDetails.length > 0 && (
-                <div className="space-y-4 mb-6">
-                  <h3 className="text-xl font-bold text-slate-100">
-                    Opponent's Moveset (Last 4 Learned Moves at Lv. {opponentLevel})
+                <div className="space-y-3 mb-6">
+                  <h3 className="text-lg font-bold text-slate-100">
+                    Last 4 Moves (Lv. {opponentLevel})
                   </h3>
                   
-                  {moveDetails.map((move, idx) => {
-                    let effectivenessColor = "text-slate-400";
-                    let effectivenessLabel = "Neutral";
-                    
-                    if (move.effectiveness === 0) {
-                      effectivenessColor = "text-green-500";
-                      effectivenessLabel = "IMMUNE";
-                    } else if (move.effectiveness >= 4) {
-                      effectivenessColor = "text-red-500";
-                      effectivenessLabel = "4x SUPER EFFECTIVE!";
-                    } else if (move.effectiveness >= 2) {
-                      effectivenessColor = "text-orange-400";
-                      effectivenessLabel = "Super Effective";
-                    } else if (move.effectiveness <= 0.25) {
-                      effectivenessColor = "text-green-400";
-                      effectivenessLabel = "¼x Resisted";
-                    } else if (move.effectiveness <= 0.5) {
-                      effectivenessColor = "text-green-300";
-                      effectivenessLabel = "½x Resisted";
-                    }
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                    {moveDetails.map((move, idx) => {
+                      let effectivenessColor = "bg-slate-700";
+                      let effectivenessText = "text-slate-300";
+                      let effectivenessLabel = "1x";
+                      
+                      if (move.effectiveness === 0) {
+                        effectivenessColor = "bg-purple-600";
+                        effectivenessText = "text-white";
+                        effectivenessLabel = "IMMUNE";
+                      } else if (move.effectiveness >= 4) {
+                        effectivenessColor = "bg-red-600";
+                        effectivenessText = "text-white";
+                        effectivenessLabel = "4x!";
+                      } else if (move.effectiveness >= 2) {
+                        effectivenessColor = "bg-orange-500";
+                        effectivenessText = "text-white";
+                        effectivenessLabel = "2x";
+                      } else if (move.effectiveness <= 0.25) {
+                        effectivenessColor = "bg-green-600";
+                        effectivenessText = "text-white";
+                        effectivenessLabel = "¼x";
+                      } else if (move.effectiveness <= 0.5) {
+                        effectivenessColor = "bg-green-500";
+                        effectivenessText = "text-white";
+                        effectivenessLabel = "½x";
+                      }
 
-                    return (
-                      <div key={idx} className="bg-poke-dark p-4 rounded-lg">
-                        <div className="flex justify-between items-start mb-2">
+                      return (
+                        <div key={idx} className="bg-poke-dark p-3 rounded-lg flex items-center gap-3">
                           <div className="flex-1">
-                            <h4 className="text-lg font-bold text-slate-100 capitalize mb-1">
-                              {move.name.replace("-", " ")}
-                            </h4>
-                            <div className="flex gap-2 items-center flex-wrap">
-                              <span className={`${typeColors[move.type]} px-2 py-1 rounded text-white text-sm font-semibold capitalize`}>
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="font-bold text-slate-100 capitalize text-sm">
+                                {move.name.replace("-", " ")}
+                              </span>
+                              <span className={`${typeColors[move.type]} px-2 py-0.5 rounded text-white text-xs font-semibold capitalize`}>
                                 {move.type}
                               </span>
-                              <span className="bg-slate-700 px-2 py-1 rounded text-slate-300 text-sm capitalize">
-                                {move.damageClass}
-                              </span>
+                            </div>
+                            <div className="flex gap-3 text-xs text-slate-400">
+                              <span>Pwr: <strong className="text-slate-200">{move.power || "—"}</strong></span>
+                              <span>Acc: <strong className="text-slate-200">{move.accuracy ? `${move.accuracy}%` : "—"}</strong></span>
+                              <span>PP: <strong className="text-slate-200">{move.pp}</strong></span>
+                              <span className="capitalize">{move.damageClass}</span>
                             </div>
                           </div>
-                          <div className={`${effectivenessColor} font-bold text-right`}>
+                          <div className={`${effectivenessColor} ${effectivenessText} px-3 py-2 rounded font-bold text-sm whitespace-nowrap`}>
                             {effectivenessLabel}
-                            <div className="text-sm">
-                              ({move.effectiveness}x damage)
-                            </div>
                           </div>
                         </div>
-                        <div className="grid grid-cols-3 gap-4 mt-3 text-sm">
-                          <div>
-                            <span className="text-slate-400">Power:</span>
-                            <span className="text-slate-200 font-bold ml-2">
-                              {move.power || "—"}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-slate-400">Accuracy:</span>
-                            <span className="text-slate-200 font-bold ml-2">
-                              {move.accuracy ? `${move.accuracy}%` : "—"}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-slate-400">PP:</span>
-                            <span className="text-slate-200 font-bold ml-2">{move.pp}</span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
 
                   {/* Summary */}
-                  <div className="bg-poke-dark p-4 rounded-lg border-2 border-poke-accent">
-                    <h4 className="font-bold text-slate-100 mb-2">Battle Recommendation:</h4>
-                    {moveDetails.some(m => m.effectiveness >= 2) ? (
-                      <p className="text-red-400">
-                        ⚠️ <strong>WARNING:</strong> Opponent has super effective moves! Consider switching out.
+                  {moveDetails.some(m => m.effectiveness >= 2) ? (
+                    <div className="bg-red-900/30 border border-red-500 p-3 rounded-lg">
+                      <p className="text-red-300 text-sm font-semibold">
+                        ⚠️ Opponent has super effective moves! Consider switching out.
                       </p>
-                    ) : (
-                      <p className="text-green-400">
-                        ✓ You're safe! Opponent has no super effective moves against you.
+                    </div>
+                  ) : (
+                    <div className="bg-green-900/30 border border-green-500 p-3 rounded-lg">
+                      <p className="text-green-300 text-sm font-semibold">
+                        ✓ Safe matchup - no super effective moves against you.
                       </p>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               )}
 
