@@ -22,6 +22,17 @@
     will-change: transform;
     transform: translateZ(0);
   }
+
+  /* Optimize scrolling performance */
+  * {
+    scroll-behavior: smooth;
+  }
+  
+  main {
+    /* Force GPU compositing for scroll container */
+    transform: translateZ(0);
+    backface-visibility: hidden;
+  }
 }
 
 @layer components {
@@ -39,6 +50,10 @@
   
   .card {
     @apply bg-poke-card/95 rounded-xl p-6 border border-slate-700/50 shadow-xl;
+    /* Scroll performance optimizations */
+    transform: translateZ(0);
+    contain: layout style paint;
+    backface-visibility: hidden;
   }
   
   .input {
