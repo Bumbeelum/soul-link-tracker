@@ -5,6 +5,8 @@ import { useState, useMemo } from "react";
 import { PokemonBase } from "@/types/core";
 import Image from "next/image";
 import Link from "next/link";
+import PokemonAutocomplete from "@/components/PokemonAutocomplete";
+import { getPokemonByName, PokeApiPokemon } from "@/services/pokeapi";
 
 // Type effectiveness chart
 const TYPE_EFFECTIVENESS: Record<string, { weakTo: string[]; resistantTo: string[]; immuneTo: string[] }> = {
@@ -28,6 +30,19 @@ const TYPE_EFFECTIVENESS: Record<string, { weakTo: string[]; resistantTo: string
   fairy: { weakTo: ['poison', 'steel'], resistantTo: ['fighting', 'bug', 'dark'], immuneTo: ['dragon'] },
 };
 
+// Generation mapping for movesets
+const generationMap: Record<string, string[]> = {
+  "Gen 1": ["red-blue", "yellow"],
+  "Gen 2": ["gold-silver", "crystal"],
+  "Gen 3": ["ruby-sapphire", "emerald", "firered-leafgreen"],
+  "Gen 4": ["diamond-pearl", "platinum", "heartgold-soulsilver"],
+  "Gen 5": ["black-white", "black-2-white-2"],
+  "Gen 6": ["x-y", "omega-ruby-alpha-sapphire"],
+  "Gen 7": ["sun-moon", "ultra-sun-ultra-moon"],
+  "Gen 8": ["sword-shield"],
+  "Gen 9": ["scarlet-violet"],
+};
+
 export default function BattlePage() {
   const currentTeam = useAppStore((state) => state.currentTeam);
   const playerSide = useAppStore((state) => state.playerSide);
@@ -35,10 +50,90 @@ export default function BattlePage() {
 
   const [selectedPokemon, setSelectedPokemon] = useState<PokemonBase | null>(null);
   const [opponentType, setOpponentType] = useState<string>("");
+  
+  // New states for opponent selection
+  const [opponentName, setOpponentName] = useState<string>("");
+  const [opponentData, setOpponentData] = useState<PokeApiPokemon | null>(null);
+  const [loadingOpponent, setLoadingOpponent] = useState(false);
+  const [selectedGeneration, setSelectedGeneration] = useState<string>("Gen 9");
 
   const myPokemon = useMemo(() => {
     return currentTeam.map(pair => playerSide === 1 ? pair.player1 : pair.player2);
   }, [currentTeam, playerSide]);
+
+  const handleOpponentSearch = async () => {
+    if (!opponentName.trim()) return;
+    
+    setLoadingOpponent(true);
+    try {
+      const data = await getPokemonByName(opponentName);
+      setOpponentData(data);
+    } catch (error) {
+      alert("Pokémon not found! Try searching for exact names or regional forms (e.g., 'pikachu', 'raichu-alola')");
+      setOpponentData(null);
+    } finally {
+      setLoadingOpponent(false);
+    }
+  };
+
+  const getOpponentTypes = () => {
+    if (!opponentData) return [];
+    return opponentData.types.map(t => t.type.name);
+  };
+
+  const calculateMatchupDamage = (attackerTypes: string[], defenderTypes: string[]) => {
+    // Calculate offensive effectiveness (attacker's moves against defender)
+    let multiplier = 1;
+    
+    defenderTypes.forEach(defType => {
+      const effectiveness = TYPE_EFFECTIVENESS[defType];
+      if (!effectiveness) return;
+      
+      // Check if defender is weak to any of attacker's types
+      attackerTypes.forEach(atkType => {
+        if (effectiveness.weakTo.includes(atkType)) {
+          multiplier *= 2;
+        } else if (effectiveness.resistantTo.includes(atkType)) {
+          multiplier *= 0.5;
+        } else if (effectiveness.immuneTo.includes(atkType)) {
+          multiplier = 0;
+        }
+      });
+    });
+    
+    return multiplier;
+  };
+
+  const getFilteredMoves = () => {
+    if (!opponentData) return [];
+    
+    const genVersions = generationMap[selectedGeneration] || [];
+    
+    const levelUpMoves = opponentData.moves
+      .flatMap(moveData => 
+        moveData.version_group_details
+          .filter(detail => 
+            detail.move_learn_method.name === "level-up" &&
+            genVersions.includes(detail.version_group.name)
+          )
+          .map(detail => ({
+            name: moveData.move.name,
+            level: detail.level_learned_at,
+            url: moveData.move.url,
+          }))
+      )
+      .sort((a, b) => a.level - b.level);
+
+    // Remove duplicates (keep earliest level)
+    const uniqueMoves = levelUpMoves.reduce((acc, move) => {
+      if (!acc.find(m => m.name === move.name)) {
+        acc.push(move);
+      }
+      return acc;
+    }, [] as typeof levelUpMoves);
+
+    return uniqueMoves;
+  };
 
   const getTypeEffectiveness = (pokemon: PokemonBase) => {
     const types = [pokemon.primaryType?.toLowerCase(), pokemon.secondaryType?.toLowerCase()].filter(Boolean) as string[];
@@ -220,6 +315,195 @@ export default function BattlePage() {
               ))}
             </div>
           </div>
+
+          {/* Opponent Pokemon Selection */}
+          <div className="card">
+            <h2 className="text-xl font-bold text-slate-100 mb-4">
+              Select Opponent Pokémon
+            </h2>
+            <div className="flex gap-4 items-end flex-wrap">
+              <div className="flex-1 min-w-[200px]">
+                <label className="block text-sm font-semibold text-slate-400 mb-2">
+                  Opponent Pokémon Name
+                </label>
+                <PokemonAutocomplete
+                  value={opponentName}
+                  onChange={setOpponentName}
+                  placeholder="e.g., Garchomp, Raichu-Alola"
+                />
+              </div>
+              <button
+                onClick={handleOpponentSearch}
+                disabled={loadingOpponent || !opponentName}
+                className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loadingOpponent ? "Loading..." : "Load Opponent"}
+              </button>
+            </div>
+
+            {opponentData && (
+              <div className="mt-6 bg-poke-dark p-4 rounded-lg">
+                <div className="flex items-center gap-4">
+                  {opponentData.sprites.front_default && (
+                    <Image
+                      src={opponentData.sprites.front_default}
+                      alt={opponentData.name}
+                      width={96}
+                      height={96}
+                      className="object-contain"
+                    />
+                  )}
+                  <div>
+                    <h3 className="text-2xl font-bold text-slate-100 capitalize">
+                      {opponentData.name.replace("-", " ")}
+                    </h3>
+                    <div className="flex gap-2 mt-2">
+                      {opponentData.types.map(t => (
+                        <span
+                          key={t.type.name}
+                          className={`${typeColors[t.type.name]} px-3 py-1 rounded-lg text-white font-semibold capitalize`}
+                        >
+                          {t.type.name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Matchup Analysis */}
+          {selectedPokemon && opponentData && (
+            <div className="card">
+              <h2 className="text-2xl font-bold text-poke-accent mb-6">
+                Matchup: {selectedPokemon.name} vs {opponentData.name.replace("-", " ")}
+              </h2>
+
+              <div className="grid md:grid-cols-2 gap-6">
+                {/* Your Pokemon Offense */}
+                <div className="bg-poke-dark p-4 rounded-lg">
+                  <h3 className="text-lg font-bold text-blue-400 mb-3">
+                    Your Offense (How effective are {selectedPokemon.name}'s moves?)
+                  </h3>
+                  {(() => {
+                    const myTypes = [selectedPokemon.primaryType, selectedPokemon.secondaryType]
+                      .filter(Boolean)
+                      .map(t => t!.toLowerCase());
+                    const oppTypes = getOpponentTypes();
+                    const damage = calculateMatchupDamage(myTypes, oppTypes);
+                    
+                    let color = "text-slate-400";
+                    let label = "Neutral";
+                    
+                    if (damage === 0) {
+                      color = "text-purple-400";
+                      label = "IMMUNE (0x damage)";
+                    } else if (damage >= 4) {
+                      color = "text-green-500";
+                      label = "SUPER EFFECTIVE (4x damage)";
+                    } else if (damage >= 2) {
+                      color = "text-green-400";
+                      label = "Super Effective (2x damage)";
+                    } else if (damage <= 0.25) {
+                      color = "text-red-500";
+                      label = "Very Resisted (¼x damage)";
+                    } else if (damage <= 0.5) {
+                      color = "text-orange-400";
+                      label = "Not Very Effective (½x damage)";
+                    }
+                    
+                    return (
+                      <div className={`${color} text-2xl font-bold text-center p-4`}>
+                        {label}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Your Pokemon Defense */}
+                <div className="bg-poke-dark p-4 rounded-lg">
+                  <h3 className="text-lg font-bold text-red-400 mb-3">
+                    Your Defense (How effective are opponent's moves?)
+                  </h3>
+                  {(() => {
+                    const myTypes = [selectedPokemon.primaryType, selectedPokemon.secondaryType]
+                      .filter(Boolean)
+                      .map(t => t!.toLowerCase());
+                    const oppTypes = getOpponentTypes();
+                    const damage = calculateMatchupDamage(oppTypes, myTypes);
+                    
+                    let color = "text-slate-400";
+                    let label = "Neutral";
+                    
+                    if (damage === 0) {
+                      color = "text-green-500";
+                      label = "IMMUNE (0x damage taken!)";
+                    } else if (damage >= 4) {
+                      color = "text-red-500";
+                      label = "4x WEAK (4x damage taken!)";
+                    } else if (damage >= 2) {
+                      color = "text-orange-400";
+                      label = "Weak (2x damage taken)";
+                    } else if (damage <= 0.25) {
+                      color = "text-green-500";
+                      label = "Quad Resist (¼x damage taken)";
+                    } else if (damage <= 0.5) {
+                      color = "text-green-400";
+                      label = "Resist (½x damage taken)";
+                    }
+                    
+                    return (
+                      <div className={`${color} text-2xl font-bold text-center p-4`}>
+                        {label}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              <div className="mt-6 pt-6 border-t border-slate-700">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-bold text-slate-100">
+                    Opponent's Moveset
+                  </h3>
+                  <div className="flex gap-2 items-center">
+                    <label className="text-sm text-slate-400">Generation:</label>
+                    <select
+                      value={selectedGeneration}
+                      onChange={(e) => setSelectedGeneration(e.target.value)}
+                      className="bg-poke-dark border border-slate-700 rounded px-3 py-1 text-slate-300"
+                    >
+                      {Object.keys(generationMap).map(gen => (
+                        <option key={gen} value={gen}>{gen}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="max-h-96 overflow-y-auto space-y-2">
+                  {getFilteredMoves().map((move, idx) => (
+                    <div
+                      key={idx}
+                      className="bg-poke-dark px-4 py-2 rounded flex justify-between items-center"
+                    >
+                      <span className="text-slate-200 capitalize">
+                        {move.name.replace("-", " ")}
+                      </span>
+                      <span className="text-slate-400 text-sm">
+                        Level {move.level}
+                      </span>
+                    </div>
+                  ))}
+                  {getFilteredMoves().length === 0 && (
+                    <p className="text-slate-500 text-center py-4">
+                      No moves found for {selectedGeneration}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Opponent Type Checker */}
           <div className="card">
