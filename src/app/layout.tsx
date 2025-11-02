@@ -19,7 +19,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <div className="min-h-screen flex flex-col">
-          <nav className="bg-poke-card/95 backdrop-blur-md border-b border-slate-700/50 shadow-lg">
+          <nav className="bg-poke-card/98 border-b border-slate-700/50 shadow-lg">
             <div className="container mx-auto px-4">
               <div className="flex items-center justify-between h-16">
                 <Link href="/" className="text-2xl font-bold text-poke-accent">

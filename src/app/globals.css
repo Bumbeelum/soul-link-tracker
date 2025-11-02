@@ -16,8 +16,11 @@
     right: 0;
     bottom: 0;
     background: rgba(11, 16, 32, 0.85);
-    backdrop-filter: blur(8px);
+    backdrop-filter: blur(4px);
     z-index: -1;
+    /* Performance optimization */
+    will-change: transform;
+    transform: translateZ(0);
   }
 }
 
@@ -35,11 +38,11 @@
   }
   
   .card {
-    @apply bg-poke-card/90 backdrop-blur-sm rounded-xl p-6 border border-slate-700/50 shadow-xl;
+    @apply bg-poke-card/95 rounded-xl p-6 border border-slate-700/50 shadow-xl;
   }
   
   .input {
-    @apply bg-poke-dark/80 backdrop-blur-sm border border-slate-700 rounded-lg px-4 py-2 text-slate-300 focus:outline-none focus:ring-2 focus:ring-poke-accent;
+    @apply bg-poke-dark/90 border border-slate-700 rounded-lg px-4 py-2 text-slate-300 focus:outline-none focus:ring-2 focus:ring-poke-accent;
   }
 }
 
