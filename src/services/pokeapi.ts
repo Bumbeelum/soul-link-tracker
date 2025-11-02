@@ -3,6 +3,8 @@ const BASE = process.env.NEXT_PUBLIC_POKE_BASE ?? "https://pokeapi.co/api/v2";
 export interface PokeApiPokemon {
   id: number;
   name: string;
+  height: number;
+  weight: number;
   types: Array<{
     slot: number;
     type: {
