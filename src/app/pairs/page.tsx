@@ -7,7 +7,6 @@ import { PokemonBase, Pair } from "@/types/core";
 import PairCard from "@/components/PairCard";
 import PokemonAutocomplete from "@/components/PokemonAutocomplete";
 import { getPokemonByName } from "@/services/pokeapi";
-import { FixedSizeList as List } from "react-window";
 
 export default function PairsPage() {
   // Optimize: Only subscribe to the specific data needed
@@ -163,74 +162,18 @@ export default function PairsPage() {
           )}
         </div>
       ) : viewMode === "detailed" ? (
-        filteredPairs.length > 5 ? (
-          // Virtual scrolling for > 5 pairs
-          <List
-            height={800}
-            itemCount={filteredPairs.length}
-            itemSize={400}
-            width="100%"
-            overscanCount={2}
-          >
-            {({ index, style }) => {
-              const pair = filteredPairs[index];
-              return (
-                <div style={{ ...style, paddingBottom: "24px" }}>
-                  <PairCard
-                    pair={pair}
-                    onEdit={() => handleEditPair(pair)}
-                    onMarkDead={() => handleMarkDead(pair.id)}
-                    onDelete={() => handleDeletePair(pair.id)}
-                  />
-                </div>
-              );
-            }}
-          </List>
-        ) : (
-          // Regular rendering for <= 5 pairs
-          <div className="grid gap-6">
-            {filteredPairs.map((pair) => (
-              <PairCard
-                key={pair.id}
-                pair={pair}
-                onEdit={() => handleEditPair(pair)}
-                onMarkDead={() => handleMarkDead(pair.id)}
-                onDelete={() => handleDeletePair(pair.id)}
-              />
-            ))}
-          </div>
-        )
-      ) : filteredPairs.length > 12 ? (
-        // Virtual scrolling for > 12 compact cards
-        <List
-          height={800}
-          itemCount={Math.ceil(filteredPairs.length / 3)}
-          itemSize={250}
-          width="100%"
-          overscanCount={2}
-        >
-          {({ index, style }) => {
-            const startIdx = index * 3;
-            const rowPairs = filteredPairs.slice(startIdx, startIdx + 3);
-            return (
-              <div style={{ ...style, paddingBottom: "16px" }}>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {rowPairs.map((pair) => (
-                    <CompactPairCard
-                      key={pair.id}
-                      pair={pair}
-                      onEdit={() => handleEditPair(pair)}
-                      onMarkDead={() => handleMarkDead(pair.id)}
-                      onDelete={() => handleDeletePair(pair.id)}
-                    />
-                  ))}
-                </div>
-              </div>
-            );
-          }}
-        </List>
+        <div className="grid gap-6">
+          {filteredPairs.map((pair) => (
+            <PairCard
+              key={pair.id}
+              pair={pair}
+              onEdit={() => handleEditPair(pair)}
+              onMarkDead={() => handleMarkDead(pair.id)}
+              onDelete={() => handleDeletePair(pair.id)}
+            />
+          ))}
+        </div>
       ) : (
-        // Regular rendering for <= 12 compact cards
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredPairs.map((pair) => (
             <CompactPairCard
