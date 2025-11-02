@@ -861,7 +861,7 @@ const CompactPairCard = memo(function CompactPairCard({
   const isDead = pair.status === "Dead";
 
   return (
-    <div className={`card relative p-4 ${isDead ? "opacity-60 grayscale" : ""} transition-all`}>
+    <div className={`card relative p-4 ${isDead ? "opacity-60 grayscale" : ""} transition-opacity`}>
       {isDead && (
         <div className="absolute inset-0 bg-red-900 bg-opacity-20 rounded-xl flex items-center justify-center z-10">
           <span className="text-4xl text-red-500 font-bold">✕</span>

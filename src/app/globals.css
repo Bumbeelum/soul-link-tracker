@@ -5,7 +5,8 @@
 @layer base {
   body {
     @apply text-slate-300;
-    background: #0B1020 url('/background.png') center/cover fixed;
+    background: #0B1020 url('/background.png') center/cover no-repeat;
+    background-attachment: scroll;
   }
   
   body::before {
@@ -23,11 +24,6 @@
     transform: translateZ(0);
   }
 
-  /* Optimize scrolling performance */
-  * {
-    scroll-behavior: smooth;
-  }
-  
   main {
     /* Force GPU compositing for scroll container */
     transform: translateZ(0);

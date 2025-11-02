@@ -46,7 +46,7 @@ const PokemonCard = memo(function PokemonCard({
     <div
       className={`card relative ${
         isDead ? "opacity-50 grayscale" : ""
-      } transition-all`}
+      } transition-opacity`}
     >
       {isDead && (
         <div className="absolute inset-0 bg-red-900 bg-opacity-20 rounded-xl flex items-center justify-center">
