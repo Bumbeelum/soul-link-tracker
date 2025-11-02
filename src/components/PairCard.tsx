@@ -2,6 +2,7 @@
 
 import { Pair } from "@/types/core";
 import PokemonCard from "./PokemonCard";
+import { memo } from "react";
 
 interface PairCardProps {
   pair: Pair;
@@ -10,7 +11,7 @@ interface PairCardProps {
   onEdit?: () => void;
 }
 
-export default function PairCard({ pair, onMarkDead, onDelete, onEdit }: PairCardProps) {
+const PairCard = memo(function PairCard({ pair, onMarkDead, onDelete, onEdit }: PairCardProps) {
   const isDead = pair.status === "Dead";
 
   return (
@@ -61,5 +62,7 @@ export default function PairCard({ pair, onMarkDead, onDelete, onEdit }: PairCar
       </div>
     </div>
   );
-}
+});
+
+export default PairCard;
 

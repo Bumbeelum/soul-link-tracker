@@ -1,7 +1,7 @@
 "use client";
 
 import { useAppStore } from "@/state/store";
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, memo } from "react";
 import { generateUUID } from "@/lib/utils";
 import { PokemonBase, Pair } from "@/types/core";
 import PairCard from "@/components/PairCard";
@@ -814,7 +814,7 @@ function EditPairForm({
   );
 }
 
-function CompactPairCard({
+const CompactPairCard = memo(function CompactPairCard({
   pair,
   onEdit,
   onMarkDead,
@@ -989,5 +989,5 @@ function CompactPairCard({
       </div>
     </div>
   );
-}
+});
 

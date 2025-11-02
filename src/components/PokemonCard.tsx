@@ -2,6 +2,7 @@
 
 import { PokemonBase } from "@/types/core";
 import Image from "next/image";
+import { memo } from "react";
 
 interface PokemonCardProps {
   pokemon: PokemonBase;
@@ -11,7 +12,7 @@ interface PokemonCardProps {
   onDelete?: () => void;
 }
 
-export default function PokemonCard({
+const PokemonCard = memo(function PokemonCard({
   pokemon,
   isDead = false,
   showActions = false,
@@ -117,7 +118,6 @@ export default function PokemonCard({
       </div>
     </div>
   );
-}
+});
 
-
-
+export default PokemonCard;
