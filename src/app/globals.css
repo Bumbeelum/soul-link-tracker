@@ -25,9 +25,8 @@
   }
 
   main {
-    /* Force GPU compositing for scroll container */
-    transform: translateZ(0);
-    backface-visibility: hidden;
+    /* Enable smooth scrolling on GPU without forcing layers */
+    will-change: scroll-position;
   }
 }
 
@@ -46,10 +45,8 @@
   
   .card {
     @apply bg-poke-card/95 rounded-xl p-6 border border-slate-700/50 shadow-xl;
-    /* Scroll performance optimizations */
-    transform: translateZ(0);
-    contain: layout style paint;
-    backface-visibility: hidden;
+    /* Smooth scroll rendering */
+    will-change: transform;
   }
   
   .input {
