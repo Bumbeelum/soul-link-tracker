@@ -1,18 +1,26 @@
 "use client";
 
 import { useAppStore } from "@/state/store";
-import { useState, useMemo, useEffect, useRef, memo } from "react";
+import { useState, useMemo, useEffect, useRef, memo, useCallback } from "react";
 import { generateUUID } from "@/lib/utils";
 import { PokemonBase, Pair } from "@/types/core";
 import PairCard from "@/components/PairCard";
 import PokemonAutocomplete from "@/components/PokemonAutocomplete";
 import { getPokemonByName } from "@/services/pokeapi";
+import { FixedSizeList as List } from "react-window";
 
 export default function PairsPage() {
+  // Optimize: Only subscribe to the specific data needed
   const pairs = useAppStore((state) => state.pairs);
-  const addPair = useAppStore((state) => state.addPair);
-  const markDead = useAppStore((state) => state.markDead);
-  const deletePair = useAppStore((state) => state.deletePair);
+  const { addPair, markDead, deletePair } = useAppStore(
+    (state) => ({
+      addPair: state.addPair,
+      markDead: state.markDead,
+      deletePair: state.deletePair,
+    }),
+    // Prevent re-renders when other store values change
+    (a, b) => a.addPair === b.addPair && a.markDead === b.markDead && a.deletePair === b.deletePair
+  );
 
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingPair, setEditingPair] = useState<Pair | null>(null);
@@ -36,6 +44,27 @@ export default function PairsPage() {
     );
   }, [pairs, filter]);
 
+  // Memoize handlers to prevent recreation on every render
+  const handleCreateToggle = useCallback(() => {
+    setEditingPair(null);
+    setShowCreateForm(prev => !prev);
+  }, []);
+
+  const handleEditPair = useCallback((pair: Pair) => {
+    setShowCreateForm(false);
+    setEditingPair(pair);
+  }, []);
+
+  const handleMarkDead = useCallback((pairId: string) => {
+    markDead(pairId);
+  }, [markDead]);
+
+  const handleDeletePair = useCallback((pairId: string) => {
+    if (confirm("Are you sure you want to delete this pair?")) {
+      deletePair(pairId);
+    }
+  }, [deletePair]);
+
   return (
     <div className="space-y-8">
       <div className="flex justify-between items-center">
@@ -48,10 +77,7 @@ export default function PairsPage() {
           </p>
         </div>
         <button
-          onClick={() => {
-            setEditingPair(null);
-            setShowCreateForm(!showCreateForm);
-          }}
+          onClick={handleCreateToggle}
           className="btn-primary"
         >
           {showCreateForm ? "Cancel" : "+ Create Pair"}
@@ -137,40 +163,82 @@ export default function PairsPage() {
           )}
         </div>
       ) : viewMode === "detailed" ? (
-        <div className="grid gap-6">
-          {filteredPairs.map((pair) => (
-            <PairCard
-              key={pair.id}
-              pair={pair}
-              onEdit={() => {
-                setShowCreateForm(false);
-                setEditingPair(pair);
-              }}
-              onMarkDead={() => markDead(pair.id)}
-              onDelete={() => {
-                if (confirm("Are you sure you want to delete this pair?")) {
-                  deletePair(pair.id);
-                }
-              }}
-            />
-          ))}
-        </div>
+        filteredPairs.length > 5 ? (
+          // Virtual scrolling for > 5 pairs
+          <List
+            height={800}
+            itemCount={filteredPairs.length}
+            itemSize={400}
+            width="100%"
+            overscanCount={2}
+          >
+            {({ index, style }) => {
+              const pair = filteredPairs[index];
+              return (
+                <div style={{ ...style, paddingBottom: "24px" }}>
+                  <PairCard
+                    pair={pair}
+                    onEdit={() => handleEditPair(pair)}
+                    onMarkDead={() => handleMarkDead(pair.id)}
+                    onDelete={() => handleDeletePair(pair.id)}
+                  />
+                </div>
+              );
+            }}
+          </List>
+        ) : (
+          // Regular rendering for <= 5 pairs
+          <div className="grid gap-6">
+            {filteredPairs.map((pair) => (
+              <PairCard
+                key={pair.id}
+                pair={pair}
+                onEdit={() => handleEditPair(pair)}
+                onMarkDead={() => handleMarkDead(pair.id)}
+                onDelete={() => handleDeletePair(pair.id)}
+              />
+            ))}
+          </div>
+        )
+      ) : filteredPairs.length > 12 ? (
+        // Virtual scrolling for > 12 compact cards
+        <List
+          height={800}
+          itemCount={Math.ceil(filteredPairs.length / 3)}
+          itemSize={250}
+          width="100%"
+          overscanCount={2}
+        >
+          {({ index, style }) => {
+            const startIdx = index * 3;
+            const rowPairs = filteredPairs.slice(startIdx, startIdx + 3);
+            return (
+              <div style={{ ...style, paddingBottom: "16px" }}>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {rowPairs.map((pair) => (
+                    <CompactPairCard
+                      key={pair.id}
+                      pair={pair}
+                      onEdit={() => handleEditPair(pair)}
+                      onMarkDead={() => handleMarkDead(pair.id)}
+                      onDelete={() => handleDeletePair(pair.id)}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          }}
+        </List>
       ) : (
+        // Regular rendering for <= 12 compact cards
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredPairs.map((pair) => (
             <CompactPairCard
               key={pair.id}
               pair={pair}
-              onEdit={() => {
-                setShowCreateForm(false);
-                setEditingPair(pair);
-              }}
-              onMarkDead={() => markDead(pair.id)}
-              onDelete={() => {
-                if (confirm("Are you sure you want to delete this pair?")) {
-                  deletePair(pair.id);
-                }
-              }}
+              onEdit={() => handleEditPair(pair)}
+              onMarkDead={() => handleMarkDead(pair.id)}
+              onDelete={() => handleDeletePair(pair.id)}
             />
           ))}
         </div>
@@ -814,6 +882,28 @@ function EditPairForm({
   );
 }
 
+// Move outside component to prevent recreation on every render
+const typeColors: Record<string, string> = {
+  normal: "bg-gray-400",
+  fire: "bg-red-500",
+  water: "bg-blue-500",
+  electric: "bg-yellow-400",
+  grass: "bg-green-500",
+  ice: "bg-cyan-300",
+  fighting: "bg-red-700",
+  poison: "bg-purple-500",
+  ground: "bg-yellow-700",
+  flying: "bg-indigo-300",
+  psychic: "bg-pink-500",
+  bug: "bg-lime-500",
+  rock: "bg-yellow-800",
+  ghost: "bg-purple-700",
+  dragon: "bg-indigo-600",
+  dark: "bg-gray-700",
+  steel: "bg-gray-500",
+  fairy: "bg-pink-300",
+};
+
 const CompactPairCard = memo(function CompactPairCard({
   pair,
   onEdit,
@@ -826,27 +916,6 @@ const CompactPairCard = memo(function CompactPairCard({
   onDelete?: () => void;
 }) {
   const isDead = pair.status === "Dead";
-
-  const typeColors: Record<string, string> = {
-    normal: "bg-gray-400",
-    fire: "bg-red-500",
-    water: "bg-blue-500",
-    electric: "bg-yellow-400",
-    grass: "bg-green-500",
-    ice: "bg-cyan-300",
-    fighting: "bg-red-700",
-    poison: "bg-purple-500",
-    ground: "bg-yellow-700",
-    flying: "bg-indigo-300",
-    psychic: "bg-pink-500",
-    bug: "bg-lime-500",
-    rock: "bg-yellow-800",
-    ghost: "bg-purple-700",
-    dragon: "bg-indigo-600",
-    dark: "bg-gray-700",
-    steel: "bg-gray-500",
-    fairy: "bg-pink-300",
-  };
 
   return (
     <div className={`card relative p-4 ${isDead ? "opacity-60 grayscale" : ""} transition-all`}>
@@ -901,6 +970,7 @@ const CompactPairCard = memo(function CompactPairCard({
                 src={pair.player1.spriteUrl}
                 alt={pair.player1.name}
                 className="w-12 h-12 object-contain"
+                loading="lazy"
               />
             ) : (
               <div className="w-12 h-12 bg-poke-card rounded flex items-center justify-center text-xl">
@@ -948,6 +1018,7 @@ const CompactPairCard = memo(function CompactPairCard({
                 src={pair.player2.spriteUrl}
                 alt={pair.player2.name}
                 className="w-12 h-12 object-contain"
+                loading="lazy"
               />
             ) : (
               <div className="w-12 h-12 bg-poke-card rounded flex items-center justify-center text-xl">
